@@ -8,7 +8,7 @@ import shutil
 
 '''
 This script retains nine columns from GDELT GKG Files
-and rewrites filtered files to extracted folder
+and rewrites filtered files to "filtered" folder
 '''
 
 
