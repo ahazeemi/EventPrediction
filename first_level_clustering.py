@@ -14,8 +14,9 @@ import csv
 
 
 '''
-This script performs first level clustering for redundancy removal
+This script performs first level clustering for redundancy removal.
 It clusters news from GDELT GKG on themes and locations,
+further clusters them on counts,
 retains one news from each cluster,
 and outputs per hour file to filtered_one folder
 '''
@@ -130,20 +131,74 @@ def main():
                             clusters[item] = [list((row_dict[n]).values())]
                         n += 1
 
+                    # clustering within each cluster, on counts
+                    count_clusters = {}   # dictionary which maps original_cluster_key to new clusters within that cluster
+                    for item in clusters:
+                        count_clusters[item] = {}
+                        cluster_df = pd.DataFrame(clusters[item])
+
+                        # print(cluster_df.to_string())
+
+                        cluster_row_dict = cluster_df.copy(deep=True)
+                        cluster_row_dict.fillna('', inplace=True)
+                        cluster_row_dict.index = range(len(cluster_row_dict))
+                        cluster_row_dict = cluster_row_dict.to_dict('index')
+
+                        df_counts = pd.DataFrame(cluster_df[cluster_df.columns[[3]]])
+                        df_counts.columns = ['counts']
+                        df_counts = pd.DataFrame(df_counts['counts'].str.split(';'))  # splitting counts
+
+                        for row in df_counts.itertuples():
+                            for i in range(0, len(row.counts)):
+                                try:
+                                    temp_list = row.counts[i].split('#')
+                                    row.counts[i] = temp_list[0]+'#'+temp_list[1]  # for retaining only COUNT_TYPE and QUANTITY
+                                    # print(row.locations[i])
+                                except:
+                                    continue
+                            if len(row.counts) == 1 and row.counts[0] == '':
+                                row.counts.append('#')          # so that news with no counts are clustered together
+                                row.counts.pop(0)
+
+                            if row.counts[len(row.counts)-1] == '':
+                               row.counts.pop()
+                            #merged = list(itertools.chain(*row.counts))
+                            #df_counts.loc[row.Index, 'counts'] = merged
+
+                        #print(df_counts.to_string())
+                        mlb4 = MultiLabelBinarizer()
+                        df_counts = pd.DataFrame(mlb4.fit_transform(df_counts['counts']),
+                                                    columns=mlb4.classes_, index=df_counts.index)
+
+                        # print(df_counts.to_string())
+                        # df_counts.to_csv('one_hot_encoded_counts.csv', sep=',')
+                        # return
+
+                        brc2 = Birch(branching_factor=50, n_clusters=None, threshold=0.2, compute_labels=True)
+                        predicted_labels2 = brc2.fit_predict(df_counts)
+
+                        n2 = 0
+                        for item2 in predicted_labels2:
+                            if item2 in count_clusters[item]:
+                                count_clusters[item][item2].append(
+                                    list((cluster_row_dict[n2]).values()))  # since cluster_row_dict[n2] is itself a dictionary
+                            else:
+                                count_clusters[item][item2] = [list((cluster_row_dict[n2]).values())]
+                            n2 += 1
+
                     if write_whole_cluster:
-                        with open('whole_clusters_thresh2.txt', 'w', encoding='utf-8') as file:
-                            for item in clusters:
-                                file.write("\n\nCluster "+str(item)+"\n")
-                                # print("Cluster ", item)
-                                for i in range(0,len(clusters[item])):
-                                    # print(clusters[item][i][2])
-                                    file.write(clusters[item][i][2]+'\n')           # appending url
+                        with open('filtered_one2/'+file+'.txt', 'w', encoding='utf-8') as file:
+                            for item in count_clusters:
+                                for item2 in count_clusters[item]:
+                                    file.write("\n\nCluster "+str(item)+': ' + str(item2) + "\n")
+                                    for i in range(0, len(count_clusters[item][item2])):
+                                        file.write(count_clusters[item][item2][i][2] + '\n')  # appending url
                     else:
                         with open('filtered_one2/'+file+'.csv', 'w',newline='', encoding='utf-8') as file:
                             writer = csv.writer(file, delimiter=",")
-                            for item in clusters:
-                                # print("Cluster ", item)
-                                writer.writerow(clusters[item][0])
+                            for item in count_clusters:
+                                for item2 in count_clusters[item]:
+                                    writer.writerow(count_clusters[item][item2][0])
 
 
 if __name__ == "__main__":
