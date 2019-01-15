@@ -6,6 +6,8 @@ from sklearn.decomposition import PCA
 import csv
 from scipy.sparse import hstack
 from sklearn import metrics
+import numpy as np
+from scipy.misc import comb
 
 
 '''
@@ -14,6 +16,45 @@ It clusters news from GDELT GKG on themes and locations (at first level),
 further clusters them on counts (second level),
 and outputs NMI and Rand Index of the clustering
 '''
+
+# There is a comb function for Python which does 'n choose k'
+# only you can't apply it to an array right away
+# So here we vectorize it...
+
+
+def myComb(a,b):
+  return comb(a,b,exact=True)
+
+
+vComb = np.vectorize(myComb)
+
+
+def get_tp_fp_tn_fn(cooccurrence_matrix):
+  tp_plus_fp = vComb(cooccurrence_matrix.sum(0, dtype=int),2).sum()
+  tp_plus_fn = vComb(cooccurrence_matrix.sum(1, dtype=int),2).sum()
+  tp = vComb(cooccurrence_matrix.astype(int), 2).sum()
+  fp = tp_plus_fp - tp
+  fn = tp_plus_fn - tp
+  tn = comb(cooccurrence_matrix.sum(), 2) - tp - fp - fn
+
+  return [tp, fp, tn, fn]
+
+
+def precision_recall_fmeasure(cooccurrence_matrix):
+    tp, fp, tn, fn = get_tp_fp_tn_fn(cooccurrence_matrix)
+
+    print ("TP: %d, FP: %d, TN: %d, FN: %d" % (tp, fp, tn, fn))
+
+    # Print the measures:
+    print ("Rand index: %f" % (float(tp + tn) / (tp + fp + fn + tn)))
+
+    precision = float(tp) / (tp + fp)
+    recall = float(tp) / (tp + fn)
+
+    print ("Precision : %f" % precision)
+    print ("Recall    : %f" % recall)
+    print ("F1        : %f" % ((2.0 * precision * recall) / (precision + recall)))
+
 
 def main():
 
@@ -197,15 +238,16 @@ def main():
 
     #print(cluster_labels)
 
+    matrix = metrics.cluster.contingency_matrix(class_labels, cluster_labels)
+    precision_recall_fmeasure(matrix)
+
     rand_index = metrics.cluster.adjusted_rand_score(class_labels, cluster_labels)
-    print("Rand Index: ", rand_index)
+    print("AdjustedRI:", rand_index)
 
     nmi = metrics.normalized_mutual_info_score(class_labels, cluster_labels)
-    print("NMI: ", nmi)
+    print("NMI       :", nmi)
 
-    matrix = metrics.cluster.contingency_matrix(class_labels, cluster_labels)
-    matrix.tofile('yourfile.txt', sep=" ", format="%s")
-    #print(matrix)
+
 
     with open('filtered_one3/' + file_prefix + '.csv', 'w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file, delimiter=",")
