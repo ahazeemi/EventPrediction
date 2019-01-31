@@ -12,11 +12,18 @@ And these news are manually labelled to evaluate the clustering quality
 
 def main():
 
-    locationADMCode = 'TU34'   # selecting news containing Istanbul only
+    # locationADMCode = 'TU34'   # selecting news containing Istanbul only
+    # locationADMCode = 'UK00'   # selecting news containing Manchester only
+    # locationADMCode = 'USIL'   # selecting news containing Chicago only
+    # locationADMCode = 'GM16'   # selecting news containing Berlin only
+    # locationADMCode = 'AS07'   # selecting news containing Victoria, Australia only
+    locationADMCode = 'AS02'     # selecting news containing New South Wales, Australia only
 
     path = r'D:\FYP\2017'
     fileName = '2017010100*.gkg.csv'
     all_files = glob.glob(os.path.join(path, fileName))
+
+    print(all_files)
 
 
     df_from_each_file = (pd.read_csv(f,header=None) for f in all_files)
@@ -50,7 +57,7 @@ def main():
         n += 1
 
     df.drop(df.index[indices_to_remove], inplace=True)
-    df.to_csv('filtered_eval.csv', sep=',',index=False,header=False)
+    df.to_csv('filtered_eval_southwales.csv', sep=',',index=False,header=False)
 
 if __name__ == "__main__":
     main()
