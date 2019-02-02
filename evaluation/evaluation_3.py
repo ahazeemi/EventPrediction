@@ -39,17 +39,22 @@ def get_tp_fp_tn_fn(cooccurrence_matrix):
 def precision_recall_fmeasure(cooccurrence_matrix):
     tp, fp, tn, fn = get_tp_fp_tn_fn(cooccurrence_matrix)
 
-    print ("TP: %d, FP: %d, TN: %d, FN: %d" % (tp, fp, tn, fn))
+    # print ("TP: %d, FP: %d, TN: %d, FN: %d" % (tp, fp, tn, fn))
 
     # Print the measures:
-    print ("Rand index: %f" % (float(tp + tn) / (tp + fp + fn + tn)))
+    rand_index = (float(tp + tn) / (tp + fp + fn + tn))
+    # print ("Rand index: %f" % rand_index)
 
     precision = float(tp) / (tp + fp)
     recall = float(tp) / (tp + fn)
+    f1 = ((2.0 * precision * recall) / (precision + recall))
 
-    print ("Precision : %f" % precision)
-    print ("Recall    : %f" % recall)
-    print ("F1        : %f" % ((2.0 * precision * recall) / (precision + recall)))
+    # print ("Precision : %f" % precision)
+    # print ("Recall    : %f" % recall)
+    # print ("F1        : %f" % f1)
+
+    return rand_index,precision,recall,f1
+
 
 
 def main():
@@ -74,169 +79,173 @@ def main():
         file_prefix = 'output'
         print(fileName)
 
-        df = pd.read_csv(fileName, header=None, encoding='latin-1')
+        for birch_thresh in np.arange(0.0, 4.1, 0.2):
+            for count_thresh in np.arange(0.1, 1.1, 0.1):
 
-        df.columns = ['record_id', 'date', 'url', 'counts', 'themes', 'locations', 'persons', 'organizations', 'tone']
+                df = pd.read_csv(fileName, header=None, encoding='latin-1')
 
-        # Retaining only those news which have non-null themes and locations
-        df = df[pd.notnull(df['themes'])]
-        df = df[pd.notnull(df['locations'])]
+                df.columns = ['record_id', 'date', 'url', 'counts', 'themes', 'locations', 'persons', 'organizations', 'tone']
 
-        df_locations = pd.DataFrame(df['locations'])
+                # Retaining only those news which have non-null themes and locations
+                df = df[pd.notnull(df['themes'])]
+                df = df[pd.notnull(df['locations'])]
 
-        # Reading actual class labels assigned by expert human assessor
-        class_labels = [None] * len(df)
-        temp = {}
-        with open(annotated_file_names[m], "r") as ins:
-            label = 1
-            for line in ins:
-                line = line.strip()
-                if line.startswith("#"):
-                    continue
-                if line:
-                    line = line.split(',')
-                    # print(line)
-                    for item in line:
-                        class_labels[int(item) - 1]= label
-                        temp[int(item)] = True
-                    label += 1
+                df_locations = pd.DataFrame(df['locations'])
 
-        row_dict = df.copy(deep=True)
-        row_dict.fillna('', inplace=True)
-        row_dict.index = range(len(row_dict))
-        row_dict = row_dict.to_dict('index')  # dictionary that maps row number to row
+                # Reading actual class labels assigned by expert human assessor
+                class_labels = [None] * len(df)
+                temp = {}
+                with open(annotated_file_names[m], "r") as ins:
+                    label = 1
+                    for line in ins:
+                        line = line.strip()
+                        if line.startswith("#"):
+                            continue
+                        if line:
+                            line = line.split(',')
+                            # print(line)
+                            for item in line:
+                                class_labels[int(item) - 1]= label
+                                temp[int(item)] = True
+                            label += 1
 
-        identifier_dict = {}   # dictionary that maps GKG Record Id to Row Number
-        i = 0
-        for index, row in df.iterrows():
-            identifier_dict[row['record_id']] = i
-            i += 1
+                row_dict = df.copy(deep=True)
+                row_dict.fillna('', inplace=True)
+                row_dict.index = range(len(row_dict))
+                row_dict = row_dict.to_dict('index')  # dictionary that maps row number to row
 
-        df_locations = pd.DataFrame(df_locations['locations'].str.split(';'))  # splitting locations
+                identifier_dict = {}   # dictionary that maps GKG Record Id to Row Number
+                i = 0
+                for index, row in df.iterrows():
+                    identifier_dict[row['record_id']] = i
+                    i += 1
 
-        for row in df_locations.itertuples():
-            for i in range(0, len(row.locations)):
-                try:
-                    row.locations[i] = (row.locations[i].split('#'))[3]  # for retaining only ADM1 Code
-                except:
-                    continue
+                df_locations = pd.DataFrame(df_locations['locations'].str.split(';'))  # splitting locations
 
-        mlb2 = MultiLabelBinarizer(sparse_output=True)
-        sparse_locations = mlb2.fit_transform(df_locations['locations'])
-        df = sparse_locations
+                for row in df_locations.itertuples():
+                    for i in range(0, len(row.locations)):
+                        try:
+                            row.locations[i] = (row.locations[i].split('#'))[3]  # for retaining only ADM1 Code
+                        except:
+                            continue
 
-        # Reducing dimensions through principal component analysis
-        if perform_pca:
-            pca = PCA(n_components=None)
-            df = pd.DataFrame(pca.fit_transform(df))
+                mlb2 = MultiLabelBinarizer(sparse_output=True)
+                sparse_locations = mlb2.fit_transform(df_locations['locations'])
+                df = sparse_locations
 
-        print("Starting clustering")
-        brc = Birch(branching_factor=50, n_clusters=None, threshold=birch_thresh, compute_labels=True)
-        predicted_labels = brc.fit_predict(df)
+                # Reducing dimensions through principal component analysis
+                if perform_pca:
+                    pca = PCA(n_components=None)
+                    df = pd.DataFrame(pca.fit_transform(df))
 
-        clusters = {}
-        n = 0
+                # print("Starting clustering")
+                brc = Birch(branching_factor=50, n_clusters=None, threshold=birch_thresh, compute_labels=True)
+                predicted_labels = brc.fit_predict(df)
 
-        for item in predicted_labels:
-            if item in clusters:
-                clusters[item].append(list((row_dict[n]).values()))  # since row_dict[n] is itself a dictionary
-            else:
-                clusters[item] = [list((row_dict[n]).values())]
-            n += 1
+                clusters = {}
+                n = 0
 
-        # clustering within each cluster, on counts
-        count_clusters = {}  # dictionary which maps original_cluster_key to new clusters within that cluster
-        for item in clusters:
-            count_clusters[item] = {}
-            cluster_df = pd.DataFrame(clusters[item])
-            cluster_row_dict = cluster_df.copy(deep=True)
-            cluster_row_dict.fillna('', inplace=True)
-            cluster_row_dict.index = range(len(cluster_row_dict))
-            cluster_row_dict = cluster_row_dict.to_dict('index')
+                for item in predicted_labels:
+                    if item in clusters:
+                        clusters[item].append(list((row_dict[n]).values()))  # since row_dict[n] is itself a dictionary
+                    else:
+                        clusters[item] = [list((row_dict[n]).values())]
+                    n += 1
 
-            df_counts = pd.DataFrame(cluster_df[cluster_df.columns[[3]]])
-            df_counts.columns = ['counts']
-            df_counts = pd.DataFrame(df_counts['counts'].str.split(';'))  # splitting counts
+                # clustering within each cluster, on counts
+                count_clusters = {}  # dictionary which maps original_cluster_key to new clusters within that cluster
+                for item in clusters:
+                    count_clusters[item] = {}
+                    cluster_df = pd.DataFrame(clusters[item])
+                    cluster_row_dict = cluster_df.copy(deep=True)
+                    cluster_row_dict.fillna('', inplace=True)
+                    cluster_row_dict.index = range(len(cluster_row_dict))
+                    cluster_row_dict = cluster_row_dict.to_dict('index')
 
-            df_themes = pd.DataFrame(cluster_df[cluster_df.columns[[4]]])
-            df_themes.columns = ['themes']
-            df_themes = pd.DataFrame(df_themes['themes'].str.split(';'))  # splitting counts
+                    df_counts = pd.DataFrame(cluster_df[cluster_df.columns[[3]]])
+                    df_counts.columns = ['counts']
+                    df_counts = pd.DataFrame(df_counts['counts'].str.split(';'))  # splitting counts
 
-            for row in df_counts.itertuples():
-                for i in range(0, len(row.counts)):
-                    try:
-                        temp_list = row.counts[i].split('#')
-                        row.counts[i] = temp_list[0] + '#' + temp_list[1]  # for retaining only COUNT_TYPE and QUANTITY
-                    except:
-                        continue
-                if len(row.counts) == 1 and row.counts[0] == '':
-                    row.counts.append('#')  # so that news with no counts are clustered together
-                    row.counts.pop(0)
+                    df_themes = pd.DataFrame(cluster_df[cluster_df.columns[[4]]])
+                    df_themes.columns = ['themes']
+                    df_themes = pd.DataFrame(df_themes['themes'].str.split(';'))
 
-                if row.counts[len(row.counts) - 1] == '':
-                    row.counts.pop()
+                    for row in df_counts.itertuples():
+                        for i in range(0, len(row.counts)):
+                            try:
+                                temp_list = row.counts[i].split('#')
+                                row.counts[i] = temp_list[0] + '#' + temp_list[1]  # for retaining only COUNT_TYPE and QUANTITY
+                            except:
+                                continue
+                        if len(row.counts) == 1 and row.counts[0] == '':
+                            row.counts.append('#')  # so that news with no counts are clustered together
+                            row.counts.pop(0)
 
-                row.counts[:] = [x for x in row.counts if not x.startswith('CRISISLEX')]  # Removing CRISISLEX Entries
+                        if row.counts[len(row.counts) - 1] == '':
+                            row.counts.pop()
 
-            mlb4 = MultiLabelBinarizer(sparse_output=True)
-            sparse_counts = mlb4.fit_transform(df_counts['counts'])
+                        row.counts[:] = [x for x in row.counts if not x.startswith('CRISISLEX')]  # Removing CRISISLEX Entries
 
-            mlb5 = MultiLabelBinarizer(sparse_output=True)
-            sparse_themes = mlb5.fit_transform(df_themes['themes'])
+                    mlb4 = MultiLabelBinarizer(sparse_output=True)
+                    sparse_counts = mlb4.fit_transform(df_counts['counts'])
 
-            small_df = hstack([sparse_themes, sparse_counts])
+                    mlb5 = MultiLabelBinarizer(sparse_output=True)
+                    sparse_themes = mlb5.fit_transform(df_themes['themes'])
 
-            brc2 = Birch(branching_factor=50, n_clusters=None, threshold=1.5, compute_labels=True)
-            predicted_labels2 = brc2.fit_predict(small_df)
+                    small_df = hstack([sparse_themes, sparse_counts])
 
-            n2 = 0
-            for item2 in predicted_labels2:
-                if item2 in count_clusters[item]:
-                    count_clusters[item][item2].append(
-                        list((cluster_row_dict[n2]).values()))  # since cluster_row_dict[n2] is itself a dictionary
-                else:
-                    count_clusters[item][item2] = [list((cluster_row_dict[n2]).values())]
-                n2 += 1
+                    brc2 = Birch(branching_factor=50, n_clusters=None, threshold=count_thresh, compute_labels=True)
+                    predicted_labels2 = brc2.fit_predict(small_df)
 
-        # if write_whole_cluster:
-        #     with open('filtered_one/'+file+'.txt', 'w', encoding='utf-8') as file:
-        #         for item in count_clusters:
-        #             for item2 in count_clusters[item]:
-        #                 file.write("\n\nCluster "+str(item)+': ' + str(item2) + "\n")
-        #                 for i in range(0, len(count_clusters[item][item2])):
-        #                     file.write(count_clusters[item][item2][i][2] + '\n')  # appending url
-        # else:
-        #     with open('filtered_one/'+file+'.csv', 'w',newline='', encoding='utf-8') as file:
-        #         writer = csv.writer(file, delimiter=",")
-        #         for item in count_clusters:
-        #             for item2 in count_clusters[item]:
-        #                 writer.writerow(count_clusters[item][item2][0])
+                    n2 = 0
+                    for item2 in predicted_labels2:
+                        if item2 in count_clusters[item]:
+                            count_clusters[item][item2].append(
+                                list((cluster_row_dict[n2]).values()))  # since cluster_row_dict[n2] is itself a dictionary
+                        else:
+                            count_clusters[item][item2] = [list((cluster_row_dict[n2]).values())]
+                        n2 += 1
 
-        label = 1
-        cluster_labels = [None] * n
-        with open( file_prefix + '.txt', 'w', encoding='utf-8') as file:
-            for item in count_clusters:
-                for item2 in count_clusters[item]:
-                    file.write("\n\nCluster " + str(item) + ': ' + str(item2) + "\n")
-                    for i in range(0, len(count_clusters[item][item2])):
-                        gkg_record_id = count_clusters[item][item2][i][0]
-                        #file.write(str(identifier_dict[gkg_record_id]+1)+'\n'+count_clusters[item][item2][i][2]+ '\n' +count_clusters[item][item2][i][3]+ '\n\n')  # appending url
-                        file.write(str(identifier_dict[gkg_record_id] + 1)+'\n')
-                        cluster_labels[identifier_dict[gkg_record_id]]= label
-                    label += 1
+                # if write_whole_cluster:
+                #     with open('filtered_one/'+file+'.txt', 'w', encoding='utf-8') as file:
+                #         for item in count_clusters:
+                #             for item2 in count_clusters[item]:
+                #                 file.write("\n\nCluster "+str(item)+': ' + str(item2) + "\n")
+                #                 for i in range(0, len(count_clusters[item][item2])):
+                #                     file.write(count_clusters[item][item2][i][2] + '\n')  # appending url
+                # else:
+                #     with open('filtered_one/'+file+'.csv', 'w',newline='', encoding='utf-8') as file:
+                #         writer = csv.writer(file, delimiter=",")
+                #         for item in count_clusters:
+                #             for item2 in count_clusters[item]:
+                #                 writer.writerow(count_clusters[item][item2][0])
 
-        #print(cluster_labels)
+                label = 1
+                cluster_labels = [None] * n
+                with open( file_prefix + '.txt', 'w', encoding='utf-8') as file:
+                    for item in count_clusters:
+                        for item2 in count_clusters[item]:
+                            file.write("\n\nCluster " + str(item) + ': ' + str(item2) + "\n")
+                            for i in range(0, len(count_clusters[item][item2])):
+                                gkg_record_id = count_clusters[item][item2][i][0]
+                                #file.write(str(identifier_dict[gkg_record_id]+1)+'\n'+count_clusters[item][item2][i][2]+ '\n' +count_clusters[item][item2][i][3]+ '\n\n')  # appending url
+                                file.write(str(identifier_dict[gkg_record_id] + 1)+'\n')
+                                cluster_labels[identifier_dict[gkg_record_id]]= label
+                            label += 1
 
-        matrix = metrics.cluster.contingency_matrix(class_labels, cluster_labels)
-        precision_recall_fmeasure(matrix)
+                #print(cluster_labels)
 
-        rand_index = metrics.cluster.adjusted_rand_score(class_labels, cluster_labels)
-        print("AdjustedRI:", rand_index)
+                matrix = metrics.cluster.contingency_matrix(class_labels, cluster_labels)
+                rand_index, precision, recall, f1 = precision_recall_fmeasure(matrix)
 
-        nmi = metrics.normalized_mutual_info_score(class_labels, cluster_labels)
-        print("NMI       :", nmi)
+                ari = metrics.cluster.adjusted_rand_score(class_labels, cluster_labels)
+                # print("AdjustedRI:", ari)
 
-        print("\n\n")
+                nmi = metrics.normalized_mutual_info_score(class_labels, cluster_labels)
+                # print("NMI       :", nmi)
+
+                print(birch_thresh, ",", count_thresh, ",", rand_index, ",", precision, ",", recall, ",", f1, ",", ari,
+                      ",", nmi)
 
 
 if __name__ == "__main__":

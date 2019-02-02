@@ -12,8 +12,8 @@ from scipy.misc import comb
 
 '''
 This script evaluates the performance of clustering for redundancy removal
-It clusters news from GDELT GKG on themes and locations (at first level),
-further clusters them on counts (second level),
+It clusters news from GDELT GKG on themes (at first level),
+further clusters them on locations and counts (second level),
 and outputs Precision, Recall, F1 Measure, NMI and Rand Index of the clustering
 '''
 
@@ -141,11 +141,8 @@ def main():
 
                 mlb = MultiLabelBinarizer(sparse_output=True)
                 sparse_themes = mlb.fit_transform(df['themes'])
+                df = sparse_themes
 
-                mlb2 = MultiLabelBinarizer(sparse_output=True)
-                sparse_locations = mlb2.fit_transform(df_locations['locations'])
-
-                df = hstack([sparse_themes, sparse_locations])
                 # df = sparse_locations
 
                 # Reducing dimensions through principal component analysis
@@ -181,6 +178,17 @@ def main():
                     df_counts.columns = ['counts']
                     df_counts = pd.DataFrame(df_counts['counts'].str.split(';'))  # splitting counts
 
+                    df_locations = pd.DataFrame(cluster_df[cluster_df.columns[[5]]])
+                    df_locations.columns = ['locations']
+                    df_locations = pd.DataFrame(df_locations['locations'].str.split(';'))
+
+                    for row in df_locations.itertuples():
+                        for i in range(0, len(row.locations)):
+                            try:
+                                row.locations[i] = (row.locations[i].split('#'))[3]  # for retaining only ADM1 Code
+                            except:
+                                continue
+
                     for row in df_counts.itertuples():
                         for i in range(0, len(row.counts)):
                             try:
@@ -197,9 +205,13 @@ def main():
 
                         row.counts[:] = [x for x in row.counts if not x.startswith('CRISISLEX')]  # Removing CRISISLEX Entries due to elevated false positive rate
 
-                    mlb4 = MultiLabelBinarizer()
-                    df_counts = pd.DataFrame(mlb4.fit_transform(df_counts['counts']),
-                                             columns=mlb4.classes_, index=df_counts.index)
+                    mlb4 = MultiLabelBinarizer(sparse_output=True)
+                    sparse_counts = mlb4.fit_transform(df_counts['counts'])
+
+                    mlb5 = MultiLabelBinarizer(sparse_output=True)
+                    sparse_locations = mlb5.fit_transform(df_locations['locations'])
+
+                    small_df = hstack([sparse_locations, sparse_counts])
                     #pca = PCA(n_components=2)
                     #df_counts = pd.DataFrame(pca.fit_transform(df_counts))
 
@@ -208,7 +220,7 @@ def main():
                     # return
 
                     brc2 = Birch(branching_factor=50, n_clusters=None, threshold=count_thresh, compute_labels=True)
-                    predicted_labels2 = brc2.fit_predict(df_counts)
+                    predicted_labels2 = brc2.fit_predict(small_df)
 
                     n2 = 0
                     for item2 in predicted_labels2:
