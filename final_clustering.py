@@ -1,13 +1,18 @@
 import pandas as pd
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.cluster import Birch
+from sklearn.cluster import DBSCAN
 from sklearn.decomposition import PCA
+from sklearn.metrics.pairwise import euclidean_distances
+from scipy.sparse import csr_matrix
 import itertools
 import csv
 import glob
 import os
+import numpy as np
+import scipy
 from scipy.sparse import  hstack
-
+from operator import itemgetter
 '''
 This script performs the final clustering step of forming event chains
 It clusters news from filtered_two folder on themes and locations,
@@ -21,7 +26,7 @@ def main():
 
     # parameters
     perform_pca = False
-    birch_thresh = 3.2
+    birch_thresh = 1
 
     for year in range(2017,2018):
         for month in range(1,2):
@@ -38,8 +43,8 @@ def main():
                     if (day < 10):
                         dayStr = '0' + dayStr
 
-                    fileName = yearStr+monthStr+dayStr+hourStr+'*.csv'
-                    file_txt = yearStr+monthStr+dayStr+hourStr+'.txt'
+                    fileName = yearStr+monthStr+dayStr+hourStr+'.csv'
+                    file_prefix = yearStr+monthStr+dayStr+hourStr
 
                     path = r'C:\Users\lenovo\PycharmProjects\FYP\filtered_two'  # use your path
                     all_files = glob.glob(os.path.join(path, fileName))
@@ -66,38 +71,24 @@ def main():
 
                     df = pd.DataFrame(df['themes'].str.split(';'))    # splitting themes
 
-                    #df_persons = pd.DataFrame(df_persons['persons'].str.split(';'))  # splitting persons
-
                     df_locations = pd.DataFrame(df_locations['locations'].str.split(';')) # splitting locations
 
                     for row in df_locations.itertuples():
                         for i in range(0,len(row.locations)):
                             try:
-                                row.locations[i] = (row.locations[i].split('#'))[3]    # for retaining only ADM1 Code
+                                temp = row.locations[i].split('#')
+                                row.locations[i] = temp[4] + '#' + temp[5]    # for retaining only ADM1 Code
                             except:
                                 continue
-                        #merged = list(itertools.chain(*row.locations))
-                        #print(merged)
-
-                        #df_locations.loc[row.Index, 'locations'] = merged
 
                     df = df[pd.notnull(df['themes'])]
-
-                    # one hot encoding of themes
-                    '''mlb = MultiLabelBinarizer()
-                    df = pd.DataFrame(mlb.fit_transform(df['themes']),columns=mlb.classes_,index=df.index)
-
-                    # one hot encoding of locations
-                    mlb2 = MultiLabelBinarizer()
-                    df_locations = pd.DataFrame(mlb2.fit_transform(df_locations['locations']), columns=mlb2.classes_, index=df_locations.index)
-
-                    #mlb3 = MultiLabelBinarizer()
-                    #df_persons = pd.DataFrame(mlb3.fit_transform(df_persons['persons']), columns=mlb3.classes_,index=df_persons.index)
-
-                    df=df.join(df_locations)'''
-                    #df = df.join(df_persons)
-
-                    #df_locations.to_csv('temp2.csv', sep=',', index=0)
+                    for row in df.itertuples():
+                        row.themes[:] = [x for x in row.themes if not x.startswith(('CRISISLEX'))]
+                        if len(row.themes) == 1 and row.themes[0] == '':
+                            row.themes.append('#')
+                            row.themes.pop(0)
+                        if row.themes[len(row.themes) - 1] == '':
+                            row.themes.pop()
 
                     mlb = MultiLabelBinarizer(sparse_output=True)
                     sparse_themes = mlb.fit_transform(df['themes'])
@@ -105,23 +96,8 @@ def main():
                     mlb2 = MultiLabelBinarizer(sparse_output=True)
                     sparse_locations = mlb2.fit_transform(df_locations['locations'])
 
-                    #df = df.join(df_locations['locations'])
-
-                    #dfa = pd.DataFrame(df['themes'].tolist())
-                    #dfa.to_csv('temp2.csv', sep=',', index=0)
-                    #print(dfa.shape)
-
-                    df = hstack([sparse_themes, sparse_locations])
-
-                    #mlb = MultiLabelBinarizer(sparse_output=True)
-
-                    #df = mlb.fit_transform(df)
-                    #sparse_size = (sparse_dataset.data.nbytes + sparse_dataset.indptr.nbytes + sparse_dataset.indices.nbytes) / 1e6
-                    #print(sparse_size)
-
-                    # df = pd.DataFrame(mlb.fit_transform(df['themes']), columns=mlb.classes_, index=df.index)
-                    # print(df.info())
-
+                    df = hstack([sparse_themes.astype(float), sparse_locations.astype(float)])
+                    #df = hstack([sparse_locations.astype(float), sparse_persons.astype(float)])
 
                     # Reducing dimensions through principal component analysis
                     if perform_pca:
@@ -133,8 +109,6 @@ def main():
                     brc.fit(df)
                     predicted_labels = brc.predict(df)
 
-                    #predicted_labels = brc.fit_predict(df)
-
                     clusters = {}
                     n = 0
                     for item in predicted_labels:
@@ -144,11 +118,21 @@ def main():
                             clusters[item] = [list((row_dict[n]).values())]
                         n += 1
 
-                    with open('final/a' + file_txt, 'w', encoding='utf-8') as file:
+                    with open('final/' + file_prefix + '.txt', 'w', encoding='utf-8') as file:
                         for item in clusters:
                             file.write("\n\nCluster " + str(item) + "\n")
                             for i in range(0, len(clusters[item])):
                                 file.write(clusters[item][i][2] + '\n')  # appending url
+
+                    with open('final/' + file_prefix + '.csv', 'w', newline='', encoding='utf-8') as file:
+                        writer = csv.writer(file, delimiter=",")
+                        for item in clusters:
+                            if len(clusters[item]) > 0:
+                                clusters[item].sort(key=itemgetter(1))
+                                for i in range(0, len(clusters[item])):
+                                    writer.writerow(clusters[item][i])
+                                writer.writerow('#')
+                    return
 
 
 if __name__ == "__main__":
