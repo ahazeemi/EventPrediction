@@ -93,6 +93,16 @@ def main():
 
                 df_locations = pd.DataFrame(df['locations'])
 
+                df_persons = pd.DataFrame(df['persons'])
+                df_persons.fillna('#', inplace=True)
+                df_persons = pd.DataFrame(df_persons['persons'].str.split(';'))  # splitting persons
+                for row in df_persons.itertuples():
+                    if len(row.persons) == 1 and row.persons[0] == '':
+                        row.persons.append('#')  # so that news with no persons are clustered together
+                        row.persons.pop(0)
+                    if row.persons[len(row.persons) - 1] == '':
+                        row.persons.pop()
+
                 # Reading actual class labels assigned by expert human assessor
                 class_labels = [None] * len(df)
                 temp = {}
@@ -138,6 +148,11 @@ def main():
                     # df_locations.loc[row.Index, 'locations'] = merged
 
                 df = df[pd.notnull(df['themes'])]
+                for row in df.itertuples():
+                    row.themes[:] = [x for x in row.themes if not x.startswith(('CRISISLEX'))]
+                    if len(row.themes) == 1 and row.themes[0] == '':
+                        row.themes.append('#')
+                        row.themes.pop(0)
 
                 mlb = MultiLabelBinarizer(sparse_output=True)
                 sparse_themes = mlb.fit_transform(df['themes'])

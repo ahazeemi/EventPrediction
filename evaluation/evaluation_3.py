@@ -174,7 +174,7 @@ def main():
                         for i in range(0, len(row.counts)):
                             try:
                                 temp_list = row.counts[i].split('#')
-                                row.counts[i] = temp_list[0] + '#' + temp_list[1]  # for retaining only COUNT_TYPE and QUANTITY
+                                row.counts[i] = temp_list[0] + '#' + temp_list[1] + '#' + temp_list[5]
                             except:
                                 continue
                         if len(row.counts) == 1 and row.counts[0] == '':
