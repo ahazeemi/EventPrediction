@@ -14,6 +14,15 @@ from keras.models import load_model
 from keras.utils.vis_utils import plot_model
 import os
 
+'''
+Hierarchical LSTM Model for Event Prediction through w2e dataset
+The model is able to learn two level dependencies
+1) Within an event
+2) Across Events
+'''
+
+
+
 def get_event_details(file_name):
     stopwords_set = set(stopwords.words('english'))
     events = []
