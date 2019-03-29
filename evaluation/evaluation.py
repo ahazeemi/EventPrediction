@@ -68,8 +68,8 @@ def main():
     birch_thresh = 2.0
     count_thresh = 0.1
 
-    eval_file_names = ['filtered_eval_one_event.csv', 'filtered_eval_three_event.csv', 'filtered_eval_five_event.csv']
-    annotated_file_names = ['annotated_one_event.txt', 'annotated_three_event.txt', 'annotated_five_event.txt']
+    eval_file_names = ['filtered_eval_three_event.csv', 'filtered_eval_five_event.csv','filtered_eval_seven_event.csv']
+    annotated_file_names = ['annotated_three_event.txt', 'annotated_five_event.txt','annotated_seven_event.txt']
 
     for m in range(0,len(eval_file_names)):
         fileName = eval_file_names[m]
