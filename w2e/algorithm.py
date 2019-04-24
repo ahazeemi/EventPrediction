@@ -4,11 +4,10 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.cluster import Birch
 from scipy.sparse import hstack
 from operator import itemgetter
-import numpy as np
 import nltk
 from nltk.corpus import stopwords
-from nltk.stem.porter import PorterStemmer
-from nltk.stem.snowball import SnowballStemmer
+import cProfile
+
 
 def algorithm():
 
@@ -25,8 +24,6 @@ def algorithm():
     birch_thresh = 2.5
     window_size = 10
     progress_df = pd.DataFrame()
-
-    stop_words = set(stopwords.words('english'))
 
     days = []
 
